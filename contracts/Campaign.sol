@@ -12,12 +12,16 @@ contract Compaign {
         uint256 value;
         address payable recipient;
         bool complete;
+        uint256 approvalCount;
+        mapping(address => bool) approvals;
     }
 
     address public manager;
+    mapping(uint256 => Request) public requests;
+    mapping(address => bool) approvers;
+    uint256 public approversCount;
     uint256 public minimumContribution;
-    address payable[] public approvers;
-    Request[] public requests;
+    uint256 public numRequests;
 
     modifier restricted() {
         require(manager == msg.sender);
@@ -31,7 +35,8 @@ contract Compaign {
 
     function contribute() public payable {
         require(msg.value >= minimumContribution);
-        approvers.push(payable(msg.sender));
+        approvers[msg.sender] = true;
+        approversCount++;
     }
 
     function createRequest(
@@ -39,17 +44,31 @@ contract Compaign {
         uint256 value,
         address payable recipient
     ) public restricted {
-        Request memory newRequest = Request({
-            description: description,
-            value: value,
-            recipient: recipient,
-            complete: false
-        });
-
-        requests.push(newRequest);
+        Request storage newReq = requests[numRequests++];
+        newReq.description = description;
+        newReq.value = value;
+        newReq.recipient = recipient;
+        newReq.complete = false;
+        newReq.approvalCount = 0;
     }
 
-    function approveRequest() public {}
+    function approveRequest(uint256 index) public {
+        Request storage request = requests[index];
 
-    function finalizeRequest() public restricted {}
+        require(approvers[msg.sender]);
+        require(!request.approvals[msg.sender]);
+
+        request.approvals[msg.sender] = true;
+        request.approvalCount++;
+    }
+
+    function finalizeRequest(uint256 index) public restricted {
+        Request storage request = requests[index];
+
+        require(!request.complete);
+        require(request.approvalCount > (approversCount / 2));
+
+        request.recipient.transfer(request.value);
+        request.complete = true;
+    }
 }
